@@ -1,24 +1,24 @@
 #' Copula-based Directed Acyclic Graph
 #'
-#' @param x a matrix or data frame with more than two columns 
+#' @param x a matrix or data frame with more than two columns
 #' (see \code{\link{pairwise_direction}} for the bivariate case)
 #' @param alpha a scalar number in (0,1) indicating the level of the test.
-#' @param pc a logical indicating whether the PC algorithm should be used 
+#' @param pc a logical indicating whether the PC algorithm should be used
 #' to find the skeleton.
-#' @param skeleton a logical indicating whether the skeleton only should be 
+#' @param skeleton a logical indicating whether the skeleton only should be
 #' returned.
-#' @param fast a logical indicating whether the memory greedy (but faster) 
+#' @param fast a logical indicating whether the memory greedy (but faster)
 #' method should be used.
-#' @param ... additional arguments passed to 
+#' @param ... additional arguments passed to
 #' \code{\link[rvinecopulib:bicop]{bicop}}
 #'
 #' @details
 #' TODO
-#' 
+#'
 #' @return estimated causal DAG and its adjacency matrix
 #'
 #' @examples
-#' 
+#'
 #' set.seed(123)
 #' n <- 500
 #' X <- rnorm(n)
@@ -35,16 +35,17 @@
 #' @importFrom igraph graph_from_edgelist graph_from_adjacency_matrix as_edgelist as_adjacency_matrix
 #' @importFrom assertthat is.number is.flag
 #' @importFrom pcalg skeleton
-copula_dag <- function(x, alpha = 0.1, 
-                       pc = TRUE, 
-                       skeleton = FALSE, 
-                       fast = TRUE, ...) {
+copula_dag <- function(x, alpha = 0.1,
+                       pc = TRUE,
+                       skeleton = FALSE,
+                       fast = TRUE
+                       ,...) {
   
   # basic sanity checks
   assert_that(is.matrix(x) || is.data.frame(x),
               msg = "x should be a vector, matrix or data.frame")
   assert_that(ncol(x) > 2)
-  assert_that(all(apply(x,2,is.numeric)), 
+  assert_that(all(apply(x,2,is.numeric)),
               msg = "all the elements of x should be numeric")
   assert_that(any(duplicated(x, MARGIN = 2)) == FALSE,
               msg = "variables in x cannot be identical")
@@ -62,13 +63,13 @@ copula_dag <- function(x, alpha = 0.1,
     message(msg)
     fast <- FALSE
   }
-    
+  
   d <- ncol(x)
   udata <- apply(x, 2, rank)/(n+1)
   
   # basic arguments
   pars <- list(data = matrix(),
-               family_set = "tll", 
+               family_set = "tll",
                nonpar_method = "constant")
   # additional arguments
   pars <- modifyList(pars, list(...))
@@ -90,9 +91,9 @@ copula_dag <- function(x, alpha = 0.1,
     # return pdf required for the residuals for every combination
     copdata <- lapply(1:nrow(all_comb), function(j) {
       # get pdf required for the residuals
-      outer(udata[,all_comb[j,1]], udata[,all_comb[j,2]], 
-            function(u1, u2) predict(object = copdata[[j]], 
-                                     newdata = cbind(u1, u2), 
+      outer(udata[,all_comb[j,1]], udata[,all_comb[j,2]],
+            function(u1, u2) predict(object = copdata[[j]],
+                                     newdata = cbind(u1, u2),
                                      what = "pdf"))
     })
   }
@@ -125,20 +126,26 @@ copula_dag <- function(x, alpha = 0.1,
       ifelse(rep(pairwise_direction(x[,comb]), 2), rev(comb), comb))
     sel_comb <- t(sel_comb)
   }
+  m = matrix(0, nrow = d, ncol = d)
+  for (s in 1:dim(sel_comb)[1] ) {
+    i = sel_comb[s,1]
+    j = sel_comb[s,2]
+    m[i,j] = 1
+  }
   
   # create and return graph and its adjacency matrix
-  estimated_graph = graph_from_edgelist(sel_comb, directed = !skeleton)
-  return(list(graph = estimated_graph, Adj = as_adjacency_matrix(estimated_graph, sparse = FALSE)))
+  estimated_graph = graph_from_adjacency_matrix(m)
+  return(list(graph = estimated_graph, Adj = m))
 }
 
 get_ijk_combs <- function(i, j, k, all_comb) {
   sapply(1:nrow(all_comb), function(l) {
-    ifelse((all_comb[l, 1] == i && all_comb[l, 2] %in% k) || 
-             (all_comb[l, 2] == i && all_comb[l, 1] %in% k), 
-           1, ifelse((all_comb[l, 1] %in% k && all_comb[l, 2] == j) || 
-                       (all_comb[l, 2] %in% k && all_comb[l, 1] == j), 
+    ifelse((all_comb[l, 1] == i && all_comb[l, 2] %in% k) ||
+             (all_comb[l, 2] == i && all_comb[l, 1] %in% k),
+           1, ifelse((all_comb[l, 1] %in% k && all_comb[l, 2] == j) ||
+                       (all_comb[l, 2] %in% k && all_comb[l, 1] == j),
                      2, 0))
-  }) 
+  })
 }
 
 if_vec_to_matrix <- function(u) {
@@ -157,12 +164,12 @@ get_compl <- function(i, icombs) {
 get_i_data <- function(i, sel_combs, all_comb, copdata) {
   i_combs <- all_comb[sel_combs,]
   i_compl <- get_compl(i, i_combs)
-
+  
   i_data <- copdata[sel_combs]
   is_bicop <- !is.matrix(i_data[[1]])
   i_data <- lapply(1:length(i_compl), function(k) {
     # compute pdf if not already done
-    if (is_bicop) { 
+    if (is_bicop) {
       res <- outer(i_data[[k]]$data[,1], i_data[[k]]$data[,2],
                    function(u1, u2) predict(object = i_data[[k]],
                                             newdata = cbind(u1, u2),
@@ -194,9 +201,9 @@ get_pred <- function(i, j, k, all_comb, udata, copdata) {
     
     ui <- udata[,i]
     uj <- udata[,j]
-    predi <- sapply(1:nrow(udata), function(l) 
+    predi <- sapply(1:nrow(udata), function(l)
       sum(i_data[,l]*ifelse(ui <= ui[l], 1, 0))/sum(i_data[,l]))
-    predj <- sapply(1:nrow(udata), function(l) 
+    predj <- sapply(1:nrow(udata), function(l)
       sum(j_data[,l]*ifelse(uj <= uj[l], 1, 0))/sum(j_data[,l]))
     res <- cbind(predi, predj)
   }
@@ -207,4 +214,3 @@ hoeffCItest <- function(x, y, S, suffStat) {
   ures <- get_pred(x, y, S, suffStat$all_comb, suffStat$udata, suffStat$copdata)
   hoeffd(ures[,1], ures[,2])$P[2]
 }
-
